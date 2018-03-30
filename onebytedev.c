@@ -6,6 +6,7 @@
 #include <linux/types.h> 
 #include <linux/fs.h> 
 #include <linux/proc_fs.h> 
+#include <linux/sched.h>  //needed this to workaround struct 'task_struct' errors when including uaccess.h
 #include <asm/uaccess.h> 
 #define MAJOR_NUMBER 61 
 
@@ -37,12 +38,39 @@ int onebyte_release(struct inode *inode, struct file *filep)
 
 ssize_t onebyte_read(struct file *filep, char *buf, size_t count, loff_t *f_pos) 
 {  
-	/*please complete the function on your own*/ 
+	int error_count = 0;
+
+	//f_pos will be updated below after calling copy_to_user
+	//if it is set to 1, means we have copy_to_user 1 byte.
+	if (*f_pos == 1)
+		//simply return 0, to stop 'cat' from calling read again
+		return 0;
+
+	error_count = raw_copy_to_user(buf, onebyte_data, 1);
+	if (error_count==0)
+	{       
+		//set f_pos to 1. this will be check in the next call to read
+		*f_pos=1;
+		return 1;
+	}
+	else 
+		return -EFAULT;
 } 
 
 ssize_t onebyte_write(struct file *filep, const char *buf, size_t count, loff_t *f_pos) 
 {  
-	/*please complete the function on your own*/ 
+	ssize_t rc = count;
+
+	//Save 1 byte from user input into onebyte_data
+	*onebyte_data = *buf;
+
+	if (count >= 2) 
+	{
+		printk(KERN_INFO "onebyte: writing more than one byte\n");
+		rc = (ssize_t)-ENOSPC;
+	}
+
+	return rc;
 } 
 
 static int onebyte_init(void) 
